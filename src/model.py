@@ -1,14 +1,15 @@
 class Product:
-    def __init__(self, id, order_id):
+    def __init__(self, id, beltTime):
         self.id = id
-        self.order_id = order_id
+        self.beltTime = beltTime
 
 class Order:
-    def __init__(self, id, prods):
+    def __init__(self, id, numProds, prods):
         self.id = id
+        self.numProds = numProds
         self.prods = prods
 
 class Runner:
-    def __init__(self, id):
+    def __init__(self, id, initialPos):
         self.id = id
-        self.workTime = 0
+        self.initialPos = initialPos
