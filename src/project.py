@@ -51,8 +51,47 @@ class Problem:
             self.orders.append(Order(oid, nProd, prods))
             oid +=1
 
+        # ------------------ #
+        # Encoding Variables #
+        # -------------------#
+        self.X = dict()
+        self.translate_X = dict()
 
+        self.P = dict()
+        self.translate_P = dict()
+
+        self.A = dict()
+        self.translate_A = dict()
+
+    def encode(self, maxTime):
+        lit = 1
+        for i in range(1, self.numRunners+1):
+            self.X[i] = dict()
+            for p in range(1, self.numProds+1):
+                self.X[i][p] = list()
+                for t in range(maxTime):
+                    self.X[i][p].append(lit)
+                    self.translate_X[lit] = (i, p, t)
+                    lit += 1
+
+        for p in range(1, self.numProds+1):
+            self.P[p] = list()
+            for t in range(maxTime):
+                self.P[p].append(lit)
+                self.translate_P[lit] = (p, t)
+                lit +=1
+
+        for r in range(1, self.numRunners+1):
+            self.A[r] = list()
+            for t in range(maxTime):
+                self.A[r].append(lit)
+                self.translate_A[lit] = (r, t)
+                lit +=1
+
+
+            
 
 
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
+    p.encode(3)
