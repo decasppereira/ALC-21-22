@@ -122,12 +122,18 @@ class Problem:
             enc = CardEnc.atmost(literals, bound = 1, top_id=self.topLit, encoding=EncType.pairwise)
             for clause in enc.clauses:
                 self.solver.add_clause(clause)
-                
+
         #5 - A runner takes t_ij time from product i to product j.
 
         #6 - A product takes c_j time from the conveyor belt to the packaging area
 
         #7 - A runner can only carry one product at a time
+        for r in self.runners:
+            for k in range(maxTime):
+                literals = [p[k] for p in self.X[r.id].values()]
+                enc = CardEnc.atmost(literals, bound = 1, top_id=self.topLit, encoding=EncType.pairwise)
+                for clause in enc.clauses:
+                    self.solver.add_clause(clause)
             
 
 
