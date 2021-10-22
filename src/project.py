@@ -17,7 +17,7 @@ class Problem:
 
         # Line 3 - Runners Initial Positions
         rPos = lines[parseCounter].rstrip().split()
-        self.runners = [Runner(i+1, rPos[i]) for i in range(self.numRunners)]
+        self.runners = [Runner(i+1, int(rPos[i])) for i in range(self.numRunners)]
         parseCounter += 1
 
         # Line 4 - __ Time between Products Shelves
@@ -98,21 +98,23 @@ class Problem:
         for r in self.runners:
             for t in range(maxTime):
                 for r2 in self.runners:         #TODO this can be moved to the loop below
-                    if(r2.id !=r.id):
+                    if(r2.id != r.id):
                         self.solver.add_clause([-self.A[r.id][t], self.A[r2.id][t//2]])
 
-        #2 - Runners start at time 0 and never take breaks
+        #2 - Runners start at time 0 in product j and never take breaks
         for r in self.runners:
+            self.solver.add_clause([self.X[r.id][r.initialPos][0]])
             lit = self.A[r.id][0]
             self.solver.add_clause([lit])
-            for t in range(1, maxTime-1):       #TODO olhar pa isto c atencao
+            for t in range(1, maxTime):       #TODO olhar pa isto c atencao
                 self.solver.add_clause([-self.A[r.id][t], self.A[r.id][t-1]]) 
+            for t in range(maxTime-1):
                 self.solver.add_clause([self.A[r.id][t], -self.A[r.id][t+1]])
 
         #3 - All products from all orders must arrive to the packaging area
         for p in self.products:
             qty = self.productInventory[p.id]
-            enc = CardEnc.equals(self.P[p.id], bound = qty, top_id=self.topLit, encoding=EncType.pairwise)
+            enc = CardEnc.equals(self.P[p.id], bound = qty, top_id=self.topLit)
             for clause in enc.clauses:
                 self.solver.add_clause(clause)
 
@@ -124,8 +126,32 @@ class Problem:
                 self.solver.add_clause(clause)
 
         #5 - A runner takes t_ij time from product i to product j.
+        for r in self.runners:
+            for j in self.products:
+                for k in range(maxTime):
+                    l1 = self.X[r.id][j.id][k]
+                    for j1 in self.products:
+                        time = self.shelvesTimes[j.id-1][j1.id-1]
+                        if (k+time)<maxTime:
+                            l2 = self.X[r.id][j1.id][k+time]
+                            self.solver.add_clause([-l1, l2])
+
+                    #8 - A runner can also stop being active
+                    if (k+1) < maxTime:
+                        self.solver.add_clause([-l1, -self.A[r.id][k+1]])
+
+                    #9 - A runner can only carry a product if they're active
+                    self.solver.add_clause([-l1, self.A[r.id][k-1]])
+                    
 
         #6 - A product takes c_j time from the conveyor belt to the packaging area
+        for r in self.runners:
+            for j in self.products:
+                for k in range(1, maxTime):
+                    if (k+j.beltTime) < maxTime:
+                        self.solver.add_clause([-self.X[r.id][j.id][k], self.P[j.id][k+j.beltTime]])
+                    else:
+                        self.solver.add_clause([-self.X[r.id][j.id][k]]) #TODO check this condition
 
         #7 - A runner can only carry one product at a time
         for r in self.runners:
@@ -134,12 +160,19 @@ class Problem:
                 enc = CardEnc.atmost(literals, bound = 1, top_id=self.topLit, encoding=EncType.pairwise)
                 for clause in enc.clauses:
                     self.solver.add_clause(clause)
-            
+
+    
+    def solve(self):
+        print("\nSAT?", self.solver.solve())
+        model = self.solver.get_model()
+        print("Model:", model)
 
 
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
-    timebound = 3
+    timebound = 11
     p.createVariables(timebound)
     p.encodeConstraints(timebound)
+    p.solve()
+    
