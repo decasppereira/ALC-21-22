@@ -330,6 +330,7 @@ class Problem:
         
         for r in runnerProds:
             print("{} ".format(len(runnerProds[r])), end="")
+            runnerProds[r].sort(key = lambda x:x[1])
             for p in runnerProds[r]:
                 print("{} ".format(p[0]), end="")
             print()
@@ -360,12 +361,11 @@ class Problem:
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
-    timebound = 16
+    timebound = 35
     p.createVariables(timebound)
     p.encodeConstraints(timebound)
     if(p.solver.solve()):
         model = p.solver.get_model()
-        #print(model)
         p.printOutput(model, timebound)
         #p.printModel(model)
     else:
