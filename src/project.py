@@ -358,9 +358,13 @@ class Problem:
 
     def getMaxTimebound(self):
         time = 1
+        prevProd = self.runners[0].initialPos
         for o in self.orders:
-            for p in o.prods:
-                time+= p.beltTime
+            for p in self.products:
+                if(p.id in o.prods):
+                    time += p.beltTime
+                    #time += self.shelvesTimes[prevProd-1][p.id-1]
+                    prevProd = p.id
         return time
     
     def getMinTimebound(self):
@@ -372,10 +376,10 @@ class Problem:
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
-    timebound = 6
+    timebound = 38
     p.createVariables(timebound)
     p.encodeConstraints(timebound)
-    print(p.getMaxTimebound())
+    
     if(p.solver.solve()):
         model = p.solver.get_model()
         p.printOutput(model, timebound)
