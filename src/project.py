@@ -297,7 +297,6 @@ class Problem:
         for lit in clause:
             self.translateLiteral(lit)
     
-
     def printOutput(self, model, timebound):
         print(timebound-1)
         usedProducts = []
@@ -341,7 +340,6 @@ class Problem:
                  print("{}:{} ".format(p, orders[o][p]), end="")
             print()
 
-
     def printModel(self, model):
         for v in model:
             if (abs(v) in self.translate_X) and (v>0):
@@ -358,12 +356,26 @@ class Problem:
                 k = self.translate_A[v][1] 
                 print("Runner {} active at time {}".format(i,  k))
 
+    def getMaxTimebound(self):
+        time = 1
+        for o in self.orders:
+            for p in o.prods:
+                time+= p.beltTime
+        return time
+    
+    def getMinTimebound(self):
+        return
+
+    def getSolutionTime(self, model):
+        return
+
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
-    timebound = 35
+    timebound = 6
     p.createVariables(timebound)
     p.encodeConstraints(timebound)
+    print(p.getMaxTimebound())
     if(p.solver.solve()):
         model = p.solver.get_model()
         p.printOutput(model, timebound)
