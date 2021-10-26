@@ -366,6 +366,36 @@ class Problem:
                     #time += self.shelvesTimes[prevProd-1][p.id-1]
                     prevProd = p.id
         return time
+
+    def getMinTimebound(self):
+    
+        orders_list = dict()
+        min_shelves_time =  []
+        belts_time = []
+
+        min_times_total = []
+
+        for i in range(1,self.numProds+1):
+            orders_list[i] = 0
+            
+        for o in self.orders:
+            for j in o.prods:
+                orders_list[j]+=1
+
+        for st in self.shelvesTimes:
+            min_shelves_time.append(min(st))
+
+        for p in self.products:
+            belts_time.append(p.beltTime)
+
+        for i in range(self.numProds):
+            min_time = 0
+            for j in range(orders_list[i+1]):
+                min_time+=min_shelves_time[i]
+            min_time+=belts_time[i]
+            min_times_total.append(min_time)
+
+        return max(min_times_total)
     
     def getMinTimebound(self):
         return
