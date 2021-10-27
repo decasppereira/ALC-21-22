@@ -1,7 +1,9 @@
 from model import *
 import sys
 import math
-from pysat.solvers import Glucose4
+from pysat.solvers import Glucose4, Glucose3
+from pysat.examples.rc2 import RC2
+from pysat.formula import WCNF
 from pysat.card import CardEnc, EncType
 from pysat.formula import IDPool
 
@@ -77,7 +79,7 @@ class Problem:
         self.A = dict()
         self.translate_A = dict()
 
-        self.solver = Glucose4()
+        self.solver = RC2(WCNF())
         self.topLit = 0
 
     def createVariables(self, maxTime):
@@ -125,12 +127,14 @@ class Problem:
             literals = []
             for j in self.products:
                 stime = self.shelvesTimes[r.initialPos-1][j.id-1]
-                literals.append(self.X[r.id][j.id][stime])
+                if(stime < maxTime):
+                    literals.append(self.X[r.id][j.id][stime])
 
                 #If a runner goes to prod j at time stime, then it does not carry any other product in times [0, k+stime[
                 for j1 in self.products:
                     for t in range(1, stime):
-                        self.solver.add_clause([-self.X[r.id][j.id][stime], -self.X[r.id][j1.id][t]])           
+                        if(stime < maxTime):
+                            self.solver.add_clause([-self.X[r.id][j.id][stime], -self.X[r.id][j1.id][t]])           
             
             enc = CardEnc.equals(literals, bound = 1, top_id = self.topLit, encoding=EncType.pairwise)
             if len(enc.clauses) > 0:
@@ -397,8 +401,7 @@ class Problem:
 
         return max(min_times_total)
     
-    def getMinTimebound(self):
-        return
+
 
     def getSolutionTime(self, model):
         return
@@ -406,12 +409,24 @@ class Problem:
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
-    timebound = 38
-    p.createVariables(timebound)
-    p.encodeConstraints(timebound)
+    minTime = p.getMinTimebound()
+    maxTime = p.getMaxTimebound()
+
+    timebound = minTime
+    foundSol = False
+
+    for timebound in range(minTime, maxTime):
+        print(timebound)
+        p.solver = RC2(WCNF())
+        p.createVariables(timebound)
+        p.encodeConstraints(timebound)
     
-    if(p.solver.solve()):
-        model = p.solver.get_model()
+        if(p.solver.compute()):
+            foundSol = True
+            break
+            
+    if (foundSol):
+        model = p.solver.compute()
         p.printOutput(model, timebound)
         #p.printModel(model)
     else:
