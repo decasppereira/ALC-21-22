@@ -1,0 +1,28 @@
+﻿Warehouse Packaging Scheduling
+ALC 21/22 - Project 1 Report - Group 5
+Andreia Pereira     Pedro Nunes
+   89414               89525
+   
+Running Instructions
+Our project was developed using Python and PySat (which must be installed), and PySat’s Glucose4 solver. Our code is in the directory /src/. To run the project from the main directory, simply type:
+>>> python /src/project.py < instance_path.wps > res.out
+
+Encoding
+* Xijk  : Runner i places product j  in the conveyor belt at time k.
+* Aik  : Runner i is actively working at time k.
+* Pjk  : Product j arrives at the packaging area at time k.
+
+Constraints
+We implemented the following constraints:
+1. A runner cannot spend less than 50% of the max timespan amongst other runners.
+2. Runners start at time 0 in product j and never take breaks.
+3. If a runner goes from product i to product j at time k, then it does not carry any other product in times ]k, k+Tij[.
+4. All products from all orders must arrive at the packaging area.
+5. Only one product can arrive at the packaging area at a time.
+6. A runner takes Tij time to go from product i to product j.
+7. A product takes Cj time from the conveyor belt to the packaging area.
+8. A runner can only carry one product at a time.
+9. A product arrives at the packaging area if it was placed by one and only one runner.
+
+Optimal Time Search
+We perform a binary search to find the optimal timespan of operations. First, we calculate a lower and upper bound of what that time may be, according to the problem description. Then we perform a binary search among the possible optimal times, running the solver at each step until we find the smallest operation’s time that satisfies all constraints.

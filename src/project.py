@@ -1,4 +1,3 @@
-from model import *
 import sys
 import math
 from pysat.solvers import Glucose4, Glucose3
@@ -7,7 +6,21 @@ from pysat.formula import WCNF
 from pysat.card import CardEnc, EncType
 from pysat.formula import IDPool
 
+class Product:
+    def __init__(self, id, beltTime):
+        self.id = id
+        self.beltTime = beltTime
 
+class Order:
+    def __init__(self, id, numProds, prods):
+        self.id = id
+        self.numProds = numProds
+        self.prods = prods
+
+class Runner:
+    def __init__(self, id, initialPos):
+        self.id = id
+        self.initialPos = initialPos
 
 class Problem:
     def __init__(self, lines):
@@ -23,9 +36,7 @@ class Problem:
         # Line 3 - Runners Initial Positions
         rPos = lines[parseCounter].rstrip().split()
         self.runners = [Runner(i+1, int(rPos[i])) for i in range(self.numRunners)]
-        #print("Runners:")
-        #for r in self.runners:
-         #   print("Runner id: "+ str(r.id) +" Runner pos: "+ str(r.initialPos))
+        
         parseCounter += 1
 
         # Line 4 - __ Time between Products Shelves
@@ -42,10 +53,7 @@ class Problem:
         parseCounter += 1
         for i in range(self.numProds):
             self.products.append(Product(i+1, int(line[i])))
-        #print("Products:")
-        #for p in self.products:
-         #   print("Product id: " + str(p.id) + " Product belt time: "+ str(p.beltTime))
-
+        
         # Number of Orders
         self.numOrders = int(lines[parseCounter].rstrip())
         parseCounter +=1
@@ -62,11 +70,7 @@ class Problem:
                 self.productInventory[p] += 1
             self.orders.append(Order(oid, nProd, prods))
             oid +=1
-        
-        #print("Product inventory:")
-        #print(self.productInventory)
-        #print("Time between products:")
-        #print(self.shelvesTimes)
+
         # ------------------ #
         # Encoding Variables #
         # -------------------#
@@ -79,10 +83,19 @@ class Problem:
         self.A = dict()
         self.translate_A = dict()
 
-        self.solver = RC2(WCNF())
+        self.solver = Glucose4()
         self.topLit = 0
 
     def createVariables(self, maxTime):
+        self.X = dict()
+        self.translate_X = dict()
+
+        self.P = dict()
+        self.translate_P = dict()
+
+        self.A = dict()
+        self.translate_A = dict()
+
         lit = 1
         for i in range(1, self.numRunners+1):
             self.X[i] = dict()
@@ -116,11 +129,8 @@ class Problem:
                     if(r2.id != r.id):
                         self.solver.add_clause([-self.A[r.id][t], self.A[r2.id][math.ceil(t/2)]])
 
-
     def runnerInitialTimesActive(self, maxTime):
         for r in self.runners:
-            #self.solver.add_clause([self.X[r.id][r.initialPos][0]])
-            
             l1 = self.A[r.id][0]
             self.solver.add_clause([l1])
 
@@ -142,7 +152,7 @@ class Problem:
             for c in enc.clauses:
                 c.append(-l1)
                 self.solver.add_clause(c)
-            #self.solver.add_clause(literals) 
+        
 
             for t in range(1, maxTime):      
                 #A runner can only be active at t if it was active at t-1
@@ -179,7 +189,7 @@ class Problem:
                     else:
                         self.solver.add_clause([-self.X[r.id][j.id][k]]) #TODO check this condition
 
-    def oneProductAtATime(self, maxTime):
+    def runnerOneProductAtATime(self, maxTime):
         for r in self.runners:
             for k in range(maxTime):
                 literals = [p[k] for p in self.X[r.id].values()]
@@ -205,22 +215,7 @@ class Problem:
                                 #self.printClause([-l1, -l2, -l])
                                 self.solver.add_clause([-l1, -l2, -l])
 
-
-    def encodeConstraints(self, maxTime):
-        #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
-        self.runnerPercentages(maxTime)
-
-        #2 - Runners start at time 0 in product j and never take breaks
-        self.runnerInitialTimesActive(maxTime)
-
-        #3 - All products from all orders must arrive to the packaging area 
-        self.orderConstraint()
-        
-        #4 - Only one product arriving to the packaging area at a time
-        self.packagingAreaConstraint(maxTime)
-
-
-        #5 - A runner takes t_ij time from product i to product j.
+    def productTransitionsConstraint(self, maxTime):
         for r in self.runners:
             for j in self.products:
                 for k in range(maxTime):
@@ -248,6 +243,35 @@ class Problem:
                     #7 - A runner can only carry a product if they're active
                     self.solver.add_clause([-l1, self.A[r.id][k]])
 
+    def productArrivingPackaging(self, maxTime):
+        for p in self.products:
+            for k in range(maxTime):
+                if(k-p.beltTime > 0):
+                    l = self.P[p.id][k]
+                    runnerLits = [self.X[i][p.id][k-p.beltTime] for i in range(1, self.numRunners+1)]
+                    enc = CardEnc.equals(runnerLits, bound = 1, top_id = self.topLit, encoding=EncType.pairwise)
+                    for c in enc.clauses:
+                        c.append(-l)
+                        self.solver.add_clause(c)
+                else:
+                    self.solver.add_clause([-self.P[p.id][k]])
+
+    def encodeConstraints(self, maxTime):
+        #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
+        self.runnerPercentages(maxTime)
+
+        #2 - Runners start at time 0 in product j and never take breaks
+        self.runnerInitialTimesActive(maxTime)
+
+        #3 - All products from all orders must arrive to the packaging area 
+        self.orderConstraint()
+        
+        #4 - Only one product arriving to the packaging area at a time
+        self.packagingAreaConstraint(maxTime)
+
+        #5 - A runner takes t_ij time from product i to product j.
+        self.productTransitionsConstraint(maxTime)
+
         #8 - A runner i in prod j at time k that goes to prod j' at time k+stime does not carry any other prod in times ]k, k+stime[  
         self.runnerIsBusyConstraint(maxTime)
 
@@ -255,24 +279,10 @@ class Problem:
         self.conveyorBeltConstraint(maxTime)
 
         #10 - A runner can only carry one product at a time
-        self.oneProductAtATime(maxTime)
+        self.runnerOneProductAtATime(maxTime)
 
         #11 - If a product arrives to the packaging area, it was only placed by one runner
-        for p in self.products:
-            for k in range(maxTime):
-                if(k-p.beltTime > 0):
-                    l = self.P[p.id][k]
-                    runnerLits = [self.X[i][p.id][k-p.beltTime] for i in range(1, self.numRunners+1)]
-                    #self.printClause(runnerLits)
-                    enc = CardEnc.equals(runnerLits, bound = 1, top_id = self.topLit, encoding=EncType.pairwise)
-                    for c in enc.clauses:
-                        c.append(-l)
-                        #self.printClause(c)
-                        self.solver.add_clause(c)
-                else:
-                    #self.printClause([-self.P[p.id][k]])
-                    self.solver.add_clause([-self.P[p.id][k]])
-
+        self.productArrivingPackaging(maxTime)
 
     def translateLiteral(self, l):
         lit = abs(l)
@@ -401,33 +411,85 @@ class Problem:
 
         return max(min_times_total)
     
-
-
     def getSolutionTime(self, model):
-        return
+        prodTimes =[]
+        maxTime = 0
+        for v in self.translate_P:
+            var = model[v-1]
+            if (var > 0):
+                prodTimes.append(var)
+
+        for var in prodTimes:
+            t = self.translate_P[var][1]
+            if( t > maxTime):
+                maxTime = t
+
+        return maxTime
+    
+
+def binarySearch(possibleTimes, p):
+    if (len(possibleTimes) == 1): #Found solution
+        return possibleTimes[0]
+
+    elif (len(possibleTimes) == 2):
+        return possibleTimes[1]
+
+    else:
+        midPos = len(possibleTimes)//2
+        timebound = possibleTimes[midPos]
+
+        p.solver = Glucose4()
+        p.createVariables(timebound)
+        p.encodeConstraints(timebound)
+    
+        if(p.solver.solve()):
+            model = p.solver.get_model()
+            possibleTimes = [i for i in range(possibleTimes[0], timebound+1)]
+            return binarySearch(possibleTimes, p)
+
+        else:
+            possibleTimes = [i for i in range(timebound +1, possibleTimes[len(possibleTimes)-1]+1)]
+            return binarySearch(possibleTimes, p)
+        
+def linearSearch(min, max, p):
+    timebound = minTime
+    foundSol = False
+
+    for timebound in range(minTime, maxTime):
+        p.solver = Glucose4()
+        p.createVariables(timebound)
+        p.encodeConstraints(timebound)
+    
+        if(p.solver.solve()):
+            foundSol = True
+            break
+            
+    if (foundSol):
+        model = p.solver.get_model()
+        p.printOutput(model, timebound)
+    else:
+        print("UNSAT")
+
 
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
     minTime = p.getMinTimebound()
     maxTime = p.getMaxTimebound()
-
-    timebound = minTime
-    foundSol = False
-
-    for timebound in range(minTime, maxTime):
-        print(timebound)
-        p.solver = RC2(WCNF())
-        p.createVariables(timebound)
-        p.encodeConstraints(timebound)
     
-        if(p.solver.compute()):
-            foundSol = True
-            break
-            
-    if (foundSol):
-        model = p.solver.compute()
-        p.printOutput(model, timebound)
-        #p.printModel(model)
+       
+    time = binarySearch([i for i in range(minTime, maxTime+1)], p)
+
+    p.solver = Glucose4()
+    p.createVariables(time)
+    p.encodeConstraints(time)
+
+    if (p.solver.solve()):
+        model = p.solver.get_model()
+        p.printOutput(model, time)
     else:
         print("UNSAT")
+   
+
+
+    
