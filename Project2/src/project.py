@@ -84,7 +84,7 @@ class Problem:
         self.X = dict()
         self.P = dict()
         self.A = dict()
-
+    
         for i in range(1, self.numRunners+1):
             self.X[i] = dict()
             for o in self.orders:
@@ -92,7 +92,8 @@ class Problem:
                 for p in o.prods:
                     self.X[i][o.id][p] = z3.Int("X_%s_%s_%s" %(i, o.id, p))
                     x = self.X[i][o.id][p]
-                    self.clauses.append([0 <= x < maxTime])
+                    self.solver.add([x<maxTime])
+                    self.solver.add([x>=0])
 
 
         for o in self.orders:
@@ -100,19 +101,21 @@ class Problem:
             for p in o.prods:
                 self.P[o.id][p] = z3.Int("P_%s_%s" %(o.id, p))
                 x = self.P[o.id][p]
-                self.clauses.append([1 < x < maxTime]) #All products must arrive
+                self.solver.add(1 < x) #All products must arrive
+                self.solver.add(x<maxTime)
 
         for r in range(1, self.numRunners+1):
             self.A[r] = z3.Int("A_%s" %(r))
             x = self.A[r]
-            self.clauses.append([0 < x < maxTime]) #All runners start active at time 0
+            self.solver.add(0 < x) #All runners start active at time 0
+            self.solver.add(x<maxTime)
 
     def runnerPercentages(self, maxTime):
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
         for r in self.runners:
             for r2 in self.runners:         
                 if(r2.id != r.id):
-                    self.clauses.append([self.A[r.id] > self.A[r2.id]//2])
+                    self.solver.add([self.A[r.id] >= self.A[r2.id]/2])
 
     def runnerActiveConstraint(self):
         for r in self.runners:
@@ -120,41 +123,22 @@ class Problem:
                 for j in self.X[r.id][o]:
                     x = self.X[r.id][o][j]
                     a = self.A[r.id]
-                    self.clauses.append([x <= a])
+                    self.solver.add([x <= a])
 
-    def runnerInitialTimesActive(self, maxTime):
+    def runnerInitialPosition(self, maxTime):
         for r in self.runners:
-            l1 = self.A[r.id][0]
-            self.solver.add_clause([l1])
-
-            literals = []
-            for j in self.products:
-                stime = self.shelvesTimes[r.initialPos-1][j.id-1]
-                if(stime < maxTime):
-                    literals.append(self.X[r.id][j.id][stime])
-
-                #If a runner goes to prod j at time stime, then it does not carry any other product in times [0, k+stime[
-                for j1 in self.products:
-                    for t in range(1, stime):
-                        if(stime < maxTime):
-                            self.solver.add_clause([-self.X[r.id][j.id][stime], -self.X[r.id][j1.id][t]])           
-            
-            enc = CardEnc.equals(literals, bound = 1, top_id = self.topLit, encoding=EncType.pairwise)
-            if len(enc.clauses) > 0:
-                self.topLit = max([self.topLit] + [max(c) for c in enc.clauses if len(c) > 0])
-            for c in enc.clauses:
-                c.append(-l1)
-                self.solver.add_clause(c)
+            j = r.initialPos
+            cls = []
+            for o in self.X[r.id]:
+                for j1 in self.X[r.id][o]:
+                    x1 = self.X[r.id][o][j1]
+                    t = self.shelvesTimes[j-1][j1-1]
+                    cls.append((x1 == t))
+            a = self.A[r.id]
+            cls.append((a == 1))
+            self.solver.add(z3.AtMost(*cls, 1))
+            self.solver.add(z3.AtLeast(*cls, 1))
         
-
-            for t in range(1, maxTime):      
-                #A runner can only be active at t if it was active at t-1
-                self.solver.add_clause([-self.A[r.id][t], self.A[r.id][t-1]]) 
-
-            for t in range(maxTime-1):
-                #A runner that is innactive at t will be inactive at t+1
-                self.solver.add_clause([self.A[r.id][t], -self.A[r.id][t+1]])
-
     def packagingAreaConstraint(self, maxTime):
         for o in self.P:
             for j in self.P[o]:
@@ -163,16 +147,19 @@ class Problem:
                         if(o!=o1 or j!=j1):
                             p = self.P[o][j]
                             p1 = self.P[o1][j1]
-                            self.clauses.append([p != p1 ])
+                            self.solver.add([p != p1 ])
            
     def conveyorBeltConstraint(self, maxTime):
         for r in self.runners:
-            for j in self.products:
-                for k in range(1, maxTime):
-                    if (k+j.beltTime) < maxTime:
-                        self.solver.add_clause([-self.X[r.id][j.id][k], self.P[j.id][k+j.beltTime]])
-                    else:
-                        self.solver.add_clause([-self.X[r.id][j.id][k]]) #TODO check this condition
+            for o in self.orders:
+                for j in self.products:
+                    if(j.id in o.prods):
+                        x = self.X[r.id][o.id][j.id]
+                        p = self.P[o.id][j.id]
+                        self.solver.add( 
+                            z3.Xor(
+                                p == x + j.beltTime,
+                                x == 0))
 
     def runnerOneProductAtATime(self, maxTime):
         for r in self.runners:
@@ -183,7 +170,7 @@ class Problem:
                         if(o!=o1 or j!=j1):
                             p = self.X[r.id][o][j]
                             p1 = self.X[r.id][o1][j1]
-                            self.clauses.append([p != p1])
+                            self.solver.add([p != p1])
 
     def runnerIsBusyConstraint(self, maxTime):
         for r in self.runners:
@@ -205,36 +192,38 @@ class Problem:
 
     def productTransitionsConstraint(self, maxTime):
         for r in self.runners:
-            cls = []
             for o in self.X[r.id]:
                 for j in self.X[r.id][o]:
                     x = self.X[r.id][o][j]
+                    cls = []
                     for o1 in self.X[r.id]:
                         for j1 in self.X[r.id][o1]:
-                            x1 = self.X[r.id][o1][j1]
-                            t = self.shelvesTimes[j-1][j1-1]
-                            cls.append([])
-                   
-
-    def productArrivingPackaging(self, maxTime):
-        for p in self.products:
-            for k in range(maxTime):
-                if(k-p.beltTime > 0):
-                    l = self.P[p.id][k]
-                    runnerLits = [self.X[i][p.id][k-p.beltTime] for i in range(1, self.numRunners+1)]
-                    enc = CardEnc.equals(runnerLits, bound = 1, top_id = self.topLit, encoding=EncType.pairwise)
-                    for c in enc.clauses:
-                        c.append(-l)
-                        self.solver.add_clause(c)
-                else:
-                    self.solver.add_clause([-self.P[p.id][k]])
+                            if(o!= o1  or j!=j1):
+                                x1 = self.X[r.id][o1][j1]
+                                t = self.shelvesTimes[j-1][j1-1]
+                                cls.append((x1 == x + t))
+                    a = self.A[r.id]
+                    cls.append((a == x + 1))
+                    self.solver.add(z3.AtMost(*cls, 1)) #maybe z3.And(...)
+                    self.solver.add(z3.AtLeast(*cls, 1))
+              
+    def productDeliveredByOneRunner(self, maxTime):
+        for o in self.orders:
+            for j in o.prods:
+                cls = []
+                for r in self.runners:
+                    x = self.X[r.id][o.id][j]
+                    cls.append(x!=0)
+                self.solver.add(z3.AtMost(*cls, 1)) 
+                self.solver.add(z3.AtLeast(*cls, 1))
+        
 
     def encodeConstraints(self, maxTime):
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
         self.runnerPercentages(maxTime)
 
-        #2 - Runners start at time 0 in product j and never take breaks TODO
-        #self.runnerInitialTimesActive(maxTime)
+        #2 - Runners start at time 0 in product j and never take breaks 
+        self.runnerInitialPosition(maxTime)
 
         #3 - A runner can only carry one product at a time
         self.runnerOneProductAtATime(maxTime)
@@ -242,20 +231,20 @@ class Problem:
         #4 - Only one product arriving to the packaging area at a time
         self.packagingAreaConstraint(maxTime)
 
-        #5 - A runner takes t_ij time from product i to product j. TODO
-        #self.productTransitionsConstraint(maxTime)
+        #5 - A runner takes t_ij time from product i to product j. 
+        self.productTransitionsConstraint(maxTime)
 
         #6 - A runner can only carry a product if they're active
         self.runnerActiveConstraint()
 
         #8 - A runner i in prod j at time k that goes to prod j' at time k+stime does not carry any other prod in times ]k, k+stime[  TODO
-        self.runnerIsBusyConstraint(maxTime)
+        #self.runnerIsBusyConstraint(maxTime)
 
-        #9 - A product takes c_j time from the conveyor belt to the packaging area TODO
-        #self.conveyorBeltConstraint(maxTime)
+        #9 - A product takes c_j time from the conveyor belt to the packaging area 
+        self.conveyorBeltConstraint(maxTime)
 
-        #10 - If a product arrives to the packaging area, it was only placed by one runner TODO
-        #self.productArrivingPackaging(maxTime)
+        #10 - Each product j in order o is delivered by exactly one runner TODO 
+        self.productDeliveredByOneRunner(maxTime)
                 
     def printOutput(self, model, timebound):
         print(timebound-1)
