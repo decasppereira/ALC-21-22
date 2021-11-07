@@ -2,6 +2,7 @@ import sys
 import math
 import z3
 
+
 class Product:
     def __init__(self, id, beltTime):
         self.id = id
@@ -233,7 +234,7 @@ class Problem:
         self.runnerPercentages(maxTime)
 
         #2 - Runners start at time 0 in product j and never take breaks TODO
-        self.runnerInitialTimesActive(maxTime)
+        #self.runnerInitialTimesActive(maxTime)
 
         #3 - A runner can only carry one product at a time
         self.runnerOneProductAtATime(maxTime)
@@ -242,7 +243,7 @@ class Problem:
         self.packagingAreaConstraint(maxTime)
 
         #5 - A runner takes t_ij time from product i to product j. TODO
-        self.productTransitionsConstraint(maxTime)
+        #self.productTransitionsConstraint(maxTime)
 
         #6 - A runner can only carry a product if they're active
         self.runnerActiveConstraint()
@@ -251,10 +252,10 @@ class Problem:
         self.runnerIsBusyConstraint(maxTime)
 
         #9 - A product takes c_j time from the conveyor belt to the packaging area TODO
-        self.conveyorBeltConstraint(maxTime)
+        #self.conveyorBeltConstraint(maxTime)
 
         #10 - If a product arrives to the packaging area, it was only placed by one runner TODO
-        self.productArrivingPackaging(maxTime)
+        #self.productArrivingPackaging(maxTime)
                 
     def printOutput(self, model, timebound):
         print(timebound-1)
@@ -413,9 +414,10 @@ if __name__ == '__main__':
 
     p.solver = z3.Solver()
     p.createVariables(time)
-    print(p.X)
-    print(p.P)
-    print(p.A)
+    p.encodeConstraints(time)
+    print(p.solver.check())
+    print(p.solver.model())
+
     '''p.encodeConstraints(time)
 
     if (p.solver.solve()):
