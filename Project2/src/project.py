@@ -289,9 +289,10 @@ class Problem:
         for m in model.decls():
 
             if (m.name()[0] == "X"):
-                runner = int(m.name()[2])
-                order = int(m.name()[4])
-                prod = int(m.name()[6])
+                var = m.name().split("_")
+                runner = int(var[1])
+                order = int(var[2])
+                prod = int(var[3])
                 if (model[m].as_long() != 0):
                     p[order][prod] = model[m].as_long()
                     #p[order] = {k: v for k,v in sorted(p[order].items(), key = lambda item:item[1])}
@@ -303,9 +304,10 @@ class Problem:
             #    prod = int(m.name()[4])
             #    p[order][prod] = model[m].as_long()
 
-            elif (m.name()[0] == "A"):
+            '''elif (m.name()[0] == "A"):
+                var
                 runner = int(m.name()[2])
-                a[runner] = model[m].as_long()
+                a[runner] = model[m].as_long()'''
         
         for runner in x:
             output = ""
@@ -417,25 +419,14 @@ if __name__ == '__main__':
     
     minTime = p.getMinTimebound()
     #maxTime = p.getMaxTimebound()
-    time = 9
+    time = 23
        
     #time = binarySearch([i for i in range(minTime, maxTime+1)], p)
 
     p.solver = z3.Solver()
     p.createVariables(time)
     p.encodeConstraints(time)
+    
     p.solver.check()
     model = p.solver.model()
     p.printOutput(model, time)
-
-    '''p.encodeConstraints(time)
-
-    if (p.solver.solve()):
-        model = p.solver.get_model()
-        p.printOutput(model, time)
-    else:
-        print("UNSAT")'''
-   
-
-
-    
