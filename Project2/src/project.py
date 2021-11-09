@@ -419,7 +419,7 @@ if __name__ == '__main__':
     
     minTime = p.getMinTimebound()
     #maxTime = p.getMaxTimebound()
-    time = 23
+    time = 17
        
     #time = binarySearch([i for i in range(minTime, maxTime+1)], p)
 
