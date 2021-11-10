@@ -268,12 +268,14 @@ class Problem:
                     self.solver.add(x < x1)
                 
     def breakRunnerSym(self):
+        covered_runners = []
         for r in self.runners:
             for r1 in self.runners:
-                if(r.id != r1.id and r.initialPos == r1.initialPos):
+                if(r.id != r1.id and r.initialPos == r1.initialPos and (r.id not in covered_runners) ):
                     a = self.A[r.id]
                     a1 = self.A[r1.id]
-                    self.solver.add(a <= a1)      
+                    self.solver.add(a <= a1)    
+                    covered_runners.append(r1.id)
 
     def encodeConstraints(self):
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
@@ -351,7 +353,6 @@ class Problem:
                 runner = int(m.name()[2])
                 a[runner] = model[m].as_long()'''
         
-        print(time)
         for runner in x:
             output = ""
             n_prods_runner = 0
