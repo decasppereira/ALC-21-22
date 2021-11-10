@@ -279,7 +279,7 @@ class Problem:
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
         self.runnerPercentages()
 
-        #2 - Runners start at time 0 in product j and never take breaks 
+        #2 - Runners start at their initial position and can go to any product 
         self.runnerInitialPosition()
 
         #3 - A runner can only carry one product at a time
@@ -308,7 +308,7 @@ class Problem:
 
         #12 - Breaking Runner Symmetries
         self.breakRunnerSym()
-        
+
         # We want the minimum possible time...
         self.solver.minimize(self.time)
                 
