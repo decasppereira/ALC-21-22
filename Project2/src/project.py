@@ -77,14 +77,18 @@ class Problem:
 
         self.A = dict()
 
-        self.solver = z3.Solver()
+        self.solver = z3.Optimize()
         self.clauses = []
 
-    def createVariables(self, maxTime):
+    def createVariables(self, minT, maxT):
         self.X = dict()
         self.P = dict()
         self.A = dict()
-    
+
+        self.time = z3.Int("T")
+        self.solver.add(self.time > minT)
+        self.solver.add(self.time < maxT)
+
         for i in range(1, self.numRunners+1):
             self.X[i] = dict()
             for o in self.orders:
@@ -92,7 +96,7 @@ class Problem:
                 for p in o.prods:
                     self.X[i][o.id][p] = z3.Int("X_%s_%s_%s" %(i, o.id, p))
                     x = self.X[i][o.id][p]
-                    self.solver.add([x<maxTime])
+                    self.solver.add([x<self.time])
                     self.solver.add([x>=0])
 
 
@@ -102,15 +106,15 @@ class Problem:
                 self.P[o.id][p] = z3.Int("P_%s_%s" %(o.id, p))
                 x = self.P[o.id][p]
                 self.solver.add(1 < x) #All products must arrive
-                self.solver.add(x<maxTime)
+                self.solver.add(x<self.time)
 
         for r in range(1, self.numRunners+1):
             self.A[r] = z3.Int("A_%s" %(r))
             x = self.A[r]
             self.solver.add(0 < x) #All runners start active at time 0
-            self.solver.add(x<maxTime)
+            self.solver.add(x<self.time)
 
-    def runnerPercentages(self, maxTime):
+    def runnerPercentages(self):
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
         for r in self.runners:
             for r2 in self.runners:         
@@ -125,7 +129,7 @@ class Problem:
                     a = self.A[r.id]
                     self.solver.add([x < a])
 
-    def runnerInitialPosition(self, maxTime):
+    def runnerInitialPosition(self):
         for r in self.runners:
             j = r.initialPos
             cls = []
@@ -155,7 +159,7 @@ class Problem:
                                 )
                                 #X2 cant be in time interval [X1,X]
         
-    def packagingAreaConstraint(self, maxTime):
+    def packagingAreaConstraint(self):
         for o in self.P:
             for j in self.P[o]:
                 for o1 in self.P:
@@ -165,7 +169,7 @@ class Problem:
                             p1 = self.P[o1][j1]
                             self.solver.add([p != p1 ])
            
-    def conveyorBeltConstraint(self, maxTime):
+    def conveyorBeltConstraint(self):
         for r in self.runners:
             for o in self.orders:
                 for j in self.products:
@@ -177,7 +181,7 @@ class Problem:
                                 x!=0,
                                 p == x + j.beltTime))
 
-    def runnerOneProductAtATime(self, maxTime):
+    def runnerOneProductAtATime(self):
         for r in self.runners:
            for o in self.X[r.id]:
             for j in self.X[r.id][o]:
@@ -192,7 +196,7 @@ class Problem:
                                     p != p1))
 
 
-    def runnerIsBusyConstraint(self, maxTime):
+    def runnerIsBusyConstraint(self):
         for r in self.runners:
             for o in self.orders:
                 for j in o.prods:
@@ -214,7 +218,7 @@ class Problem:
                                              )
                                              #X2 cant be in time interval [X1,X] 
 
-    def productTransitionsConstraint(self, maxTime):
+    def productTransitionsConstraint(self):
         for r in self.runners:
             for o in self.X[r.id]:
                 for j in self.X[r.id][o]:
@@ -235,7 +239,7 @@ class Problem:
                     self.solver.add(z3.Implies(x!=0, 
                                     z3.AtLeast(*cls, 1)))
               
-    def productDeliveredByOneRunner(self, maxTime):
+    def productDeliveredByOneRunner(self):
         for o in self.orders:
             for j in o.prods:
                 cls = []
@@ -246,36 +250,39 @@ class Problem:
                 self.solver.add(z3.AtLeast(*cls, 1))
         
 
-    def encodeConstraints(self, maxTime):
+    def encodeConstraints(self):
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
-        self.runnerPercentages(maxTime)
+        self.runnerPercentages()
 
         #2 - Runners start at time 0 in product j and never take breaks 
-        self.runnerInitialPosition(maxTime)
+        self.runnerInitialPosition()
 
         #3 - A runner can only carry one product at a time
-        self.runnerOneProductAtATime(maxTime)
+        self.runnerOneProductAtATime()
         
         #4 - Only one product arriving to the packaging area at a time
-        self.packagingAreaConstraint(maxTime)
+        self.packagingAreaConstraint()
 
         #5 - A runner takes t_ij time from product i to product j. 
-        self.productTransitionsConstraint(maxTime)
+        self.productTransitionsConstraint()
 
         #6 - A runner can only carry a product if they're active
         self.runnerActiveConstraint()
 
         #8 - A runner i in prod j at time k that goes to prod j' at time k+stime does not carry any other prod in times ]k, k+stime[  TODO
-        self.runnerIsBusyConstraint(maxTime)
+        self.runnerIsBusyConstraint()
 
         #9 - A product takes c_j time from the conveyor belt to the packaging area 
-        self.conveyorBeltConstraint(maxTime)
+        self.conveyorBeltConstraint()
 
         #10 - Each product j in order o is delivered by exactly one runner TODO 
-        self.productDeliveredByOneRunner(maxTime)
+        self.productDeliveredByOneRunner()
+
+        #11 - We want the minimum possible time...
+        self.solver.minimize(self.time)
                 
-    def printOutput(self, model, timebound):
-        print(timebound-1)
+    def printOutput(self, model):
+        time = 0
         x = dict()
         p = dict()
         a = dict()
@@ -298,17 +305,22 @@ class Problem:
                     #p[order] = {k: v for k,v in sorted(p[order].items(), key = lambda item:item[1])}
                 x[runner][(order, prod)] = model[m].as_long()
                 x[runner] = {k: v for k,v in sorted(x[runner].items(), key = lambda item:item[1])}
-       
-            #elif (m.name()[0] == "P"):
-            #    order = int(m.name()[2])
-            #    prod = int(m.name()[4])
-            #    p[order][prod] = model[m].as_long()
 
-            '''elif (m.name()[0] == "A"):
+            elif (m.name()[0] == "T"):
+                time = model[m].as_long() -1
+
+            '''    
+            elif (m.name()[0] == "P"):
+                order = int(m.name()[2])
+                prod = int(m.name()[4])
+                p[order][prod] = model[m].as_long()
+
+            elif (m.name()[0] == "A"):
                 var
                 runner = int(m.name()[2])
                 a[runner] = model[m].as_long()'''
         
+        print(time)
         for runner in x:
             output = ""
             n_prods_runner = 0
@@ -325,7 +337,6 @@ class Problem:
                 output+= " " + str(prod) + ":" + str(p[o.id][prod])
 
             print(str(prod_len) + output)
-
 
     def getMaxTimebound(self):
         time = 1
@@ -368,65 +379,22 @@ class Problem:
 
         return max(min_times_total)
     
-   
-
-def binarySearch(possibleTimes, p):
-    if (len(possibleTimes) == 1): #Found solution
-        return possibleTimes[0]
-
-    elif (len(possibleTimes) == 2):
-        return possibleTimes[1]
-
-    else:
-        midPos = len(possibleTimes)//2
-        timebound = possibleTimes[midPos]
-
-        p.solver = Glucose4()
-        p.createVariables(timebound)
-        p.encodeConstraints(timebound)
-    
-        if(p.solver.solve()):
-            model = p.solver.get_model()
-            possibleTimes = [i for i in range(possibleTimes[0], timebound+1)]
-            return binarySearch(possibleTimes, p)
-
-        else:
-            possibleTimes = [i for i in range(timebound +1, possibleTimes[len(possibleTimes)-1]+1)]
-            return binarySearch(possibleTimes, p)
-        
-def linearSearch(min, max, p):
-    timebound = minTime
-    foundSol = False
-
-    for timebound in range(minTime, maxTime):
-        p.solver = Glucose4()
-        p.createVariables(timebound)
-        p.encodeConstraints(timebound)
-    
-        if(p.solver.solve()):
-            foundSol = True
-            break
-            
-    if (foundSol):
-        model = p.solver.get_model()
-        p.printOutput(model, timebound)
-    else:
-        print("UNSAT")
-
-
 if __name__ == '__main__':
     p = Problem(sys.stdin.readlines())
     
     minTime = p.getMinTimebound()
-    #maxTime = p.getMaxTimebound()
-    time = 17
+    maxTime = p.getMaxTimebound()
+    print(maxTime)
        
     #time = binarySearch([i for i in range(minTime, maxTime+1)], p)
 
-    p.solver = z3.Solver()
-    p.createVariables(time)
-    p.encodeConstraints(time)
+    p.solver = z3.Optimize()
+    p.createVariables(minTime, maxTime)
+    p.encodeConstraints()
     
-    p.solver.check()
-    model = p.solver.model()
-    p.printOutput(model, time)
+    if(p.solver.check() == z3.sat):
+        model = p.solver.model()
+        p.printOutput(model)
+
+    else: 
+        print("UNSAT")
