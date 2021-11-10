@@ -195,7 +195,6 @@ class Problem:
                                     z3.Or(p!=0, p1!=0),
                                     p != p1))
 
-
     def runnerIsBusyConstraint(self):
         for r in self.runners:
             for o in self.orders:
@@ -249,6 +248,32 @@ class Problem:
                 self.solver.add(z3.AtMost(*cls, 1)) 
                 self.solver.add(z3.AtLeast(*cls, 1))
         
+    def breakProductSym(self):
+        prodSequence = dict()
+        for p in self.products:
+            prodSequence[p.id] = []
+
+        # prodSequence[p]=[1,2,3] means product p appears in orders 1, 2 and 3
+        for o in self.orders:
+            for p in o.prods:
+                prodSequence[p].append(o.id)
+
+        for p in prodSequence:
+            for i in range(len(prodSequence[p])):
+                if (i != len(prodSequence[p]) -1):
+                    o = prodSequence[p][i]
+                    o1 = prodSequence[p][i+1]
+                    x = self.P[o][p]
+                    x1 = self.P[o1][p]
+                    self.solver.add(x < x1)
+                
+    def breakRunnerSym(self):
+        for r in self.runners:
+            for r1 in self.runners:
+                if(r.id != r1.id and r.initialPos == r1.initialPos):
+                    a = self.A[r.id]
+                    a1 = self.A[r1.id]
+                    self.solver.add(a <= a1)      
 
     def encodeConstraints(self):
         #1 - A runner cannot spend less than 50% of the max timespan amongst other runners
@@ -278,7 +303,13 @@ class Problem:
         #10 - Each product j in order o is delivered by exactly one runner TODO 
         self.productDeliveredByOneRunner()
 
-        #11 - We want the minimum possible time...
+        #11 - Breaking Product Symmetries
+        self.breakProductSym()
+
+        #12 - Breaking Runner Symmetries
+        self.breakRunnerSym()
+        
+        # We want the minimum possible time...
         self.solver.minimize(self.time)
                 
     def printOutput(self, model):
@@ -384,7 +415,6 @@ if __name__ == '__main__':
     
     minTime = p.getMinTimebound()
     maxTime = p.getMaxTimebound()
-    print(maxTime)
        
     #time = binarySearch([i for i in range(minTime, maxTime+1)], p)
 
