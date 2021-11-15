@@ -327,7 +327,6 @@ class Problem:
             p[o.id] = dict()
         
         for m in model.decls():
-
             if (m.name()[0] == "X"):
                 var = m.name().split("_")
                 runner = int(var[1])
@@ -352,7 +351,7 @@ class Problem:
                 var
                 runner = int(m.name()[2])
                 a[runner] = model[m].as_long()'''
-        
+        print(time)
         for runner in x:
             output = ""
             n_prods_runner = 0
@@ -417,8 +416,6 @@ if __name__ == '__main__':
     minTime = p.getMinTimebound()
     maxTime = p.getMaxTimebound()
        
-    #time = binarySearch([i for i in range(minTime, maxTime+1)], p)
-
     p.solver = z3.Optimize()
     p.createVariables(minTime, maxTime)
     p.encodeConstraints()
